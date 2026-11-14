@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Standard Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Collections ---
+
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.uid == request.auth.uid 
+            && (data.email is string && data.email.size() <= 200)
+            && (data.displayName == null || (data.displayName is string && data.displayName.size() <= 200))
+            && (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 1000))
+            && (data.streak == null || data.streak is int)
+            && (data.traitsProgress == null || data.traitsProgress is map)
+            && (data.mbtiType == null || (data.mbtiType is string && data.mbtiType.size() <= 20))
+            && data.lastActive == request.time;
+      }
+
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidUser(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'photoURL', 'streak', 'lastActive', 'traitsProgress', 'mbtiType'
+        ])
+      );
+    }
+
+    match /personality_types/{id} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidId(id);
+    }
+    
+    match /traits/{id} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidId(id);
+    }
+    
+    match /quizzes/{id} {
+      allow read: if true;
+      allow write: if isSignedIn() && isValidId(id);
+    }
+
+    match /results/{id} {
+      function isValidResult(data) {
+        return data.userId == request.auth.uid
+            && data.traitId is string && data.traitId.size() <= 100
+            && (data.score is int || data.score is float)
+            && data.percentage is int
+            && data.timestamp == request.time;
+      }
+
+      allow get: if isSignedIn() && isValidId(id) && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(id) && isValidResult(incoming());
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(id) && existing().userId == request.auth.uid;
+    }
+
+    match /daily_moods/{id} {
+      function isValidMood(data) {
+        return data.userId == request.auth.uid
+            && data.moodType is string && data.moodType.size() <= 50
+            && data.moodEmoji is string && data.moodEmoji.size() <= 10
+            && data.moodPercentage is int
+            && data.answers is map
+            && data.timestamp == request.time;
+      }
+
+      allow get: if isSignedIn() && isValidId(id) && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(id) && isValidMood(incoming());
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(id) && existing().userId == request.auth.uid && isValidMood(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['moodType', 'moodEmoji', 'moodPercentage', 'answers', 'timestamp'])
+      );
+      allow delete: if isSignedIn() && isValidId(id) && existing().userId == request.auth.uid;
+    }
+  }
+}

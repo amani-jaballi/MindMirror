@@ -1,0 +1,6 @@
+{
+  "name": "MindMirror",
+  "description": "A premium personality analysis app for discovering traits, taking quizzes, and detailed analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
